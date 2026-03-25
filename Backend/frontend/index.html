@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Inventory</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>Inventory System</h1>
+    <div class="form">
+        <input type="text"   id="itemName"  placeholder="Item Name" />
+        <input type="number" id="quantity"  placeholder="Quantity" />
+        <input type="number" id="price"     placeholder="Price" step="0.01" />
+        <input type="number" id="stock"     placeholder="Stock" />
+
+        <button onclick="addItem()">Add</button>
+        <button onclick="updateItem()">Update</button>
+        <button onclick="removeItem()">Remove</button>
+    </div>
+
+
+    <p id="message"></p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Item Name</th>
+                <th>Quantity</th>
+                <th>Price</th>
+                <th>Stock</th>
+            </tr>
+        </thead>
+        <tbody id="itemTableBody">
+           
+        </tbody>
+    </table>
+
+    <script src="script.js"></script>
+</body>
+</html>
