@@ -1,11 +1,8 @@
-// Load items into table on page load
 async function loadItems() {
     const res = await fetch('/get-items');
     const items = await res.json();
-
     const tbody = document.getElementById('itemTableBody');
     tbody.innerHTML = '';
-
     items.forEach(item => {
         tbody.innerHTML += `
             <tr>
@@ -13,6 +10,7 @@ async function loadItems() {
                 <td>${item.Quantity}</td>
                 <td>${item.Price}</td>
                 <td>${item.Stock}</td>
+                <td>${item.Category}</td>
             </tr>
         `;
     });
@@ -27,9 +25,9 @@ async function addItem() {
         ItemName: document.getElementById('itemName').value,
         Quantity: parseInt(document.getElementById('quantity').value),
         Price:    parseFloat(document.getElementById('price').value),
-        Stock:    parseInt(document.getElementById('stock').value)
+        Stock:    parseInt(document.getElementById('stock').value),
+        Category: document.getElementById('category').value
     };
-
     const res = await fetch('/add-item', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -37,14 +35,13 @@ async function addItem() {
     });
     const data = await res.json();
     showMessage(data.message || data.error);
-    loadItems();  // refresh table
+    loadItems();
 }
 
 async function removeItem() {
     const payload = {
         ItemName: document.getElementById('itemName').value
     };
-
     const res = await fetch('/remove-item', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
@@ -60,9 +57,9 @@ async function updateItem() {
         ItemName: document.getElementById('itemName').value,
         Quantity: parseInt(document.getElementById('quantity').value),
         Price:    parseFloat(document.getElementById('price').value),
-        Stock:    parseInt(document.getElementById('stock').value)
+        Stock:    parseInt(document.getElementById('stock').value),
+        Category: document.getElementById('category').value
     };
-
     const res = await fetch('/update-item', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -73,5 +70,4 @@ async function updateItem() {
     loadItems();
 }
 
-// Load on page start
 loadItems();

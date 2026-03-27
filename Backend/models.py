@@ -8,3 +8,4 @@ class Item(db.Model):
     Quantity  = db.Column(db.Integer, nullable=False)
     Price     = db.Column(db.Float, nullable=False)
     Stock     = db.Column(db.Integer, nullable=False)
+    Category  = db.Column(db.String(100), nullable=False, default='Uncategorized')
