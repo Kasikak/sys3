@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Carol's IMS{% endblock %}
+
+{% block content %}
+<a href="/home" class="back-link">&#8592; Home</a>
+<div class="page-header">
+  <h1 class="page-title">Dashboard</h1>
+  <p class="page-sub">Welcome, {{ full_name }}</p>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-value" id="stat-products">—</div>
+    <div class="stat-label">Total Products</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" id="stat-revenue">—</div>
+    <div class="stat-label">Today's Revenue</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" id="stat-sales">—</div>
+    <div class="stat-label">Sales Today</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" id="stat-alerts">—</div>
+    <div class="stat-label">Stock Alerts</div>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">Low Stock Items</h2>
+      <a href="/inventory" class="btn btn-sm btn-outline">View All</a>
+    </div>
+    <div id="low-stock-list">Loading...</div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">Recent Alerts</h2>
+      <a href="/alerts" class="btn btn-sm btn-outline">View All</a>
+    </div>
+    <div id="recent-alerts">Loading...</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadDashboard() {
+  const res  = await fetch('/api/dashboard');
+  const data = await res.json();
+
+  document.getElementById('stat-products').textContent = data.total_products;
+  document.getElementById('stat-revenue').textContent  = '$' + data.revenue_today.toFixed(2);
+  document.getElementById('stat-sales').textContent    = data.sales_count_today;
+  document.getElementById('stat-alerts').textContent   = data.low_stock_count + data.out_of_stock_count;
+
+  const lowStockEl = document.getElementById('low-stock-list');
+  lowStockEl.innerHTML = '';
+  if (data.low_stock_items.length === 0) {
+    lowStockEl.innerHTML = '<p class="empty-text">No low stock items</p>';
+  } else {
+    data.low_stock_items.forEach(p => {
+      const row   = document.createElement('div');
+      row.className = 'list-item';
+      const name  = document.createElement('span');
+      name.className   = 'list-name';
+      name.textContent = p.name;
+      const badge = document.createElement('span');
+      badge.className   = 'badge ' + (p.stock === 0 ? 'badge-red' : 'badge-amber');
+      badge.textContent = p.stock === 0 ? 'Out of stock' : p.stock + ' left';
+      row.appendChild(name);
+      row.appendChild(badge);
+      lowStockEl.appendChild(row);
+    });
+  }
+
+  const alertsEl = document.getElementById('recent-alerts');
+  alertsEl.innerHTML = '';
+  if (data.recent_alerts.length === 0) {
+    alertsEl.innerHTML = '<p class="empty-text">No active alerts</p>';
+  } else {
+    data.recent_alerts.forEach(a => {
+      const row   = document.createElement('div');
+      row.className = 'list-item';
+      const name  = document.createElement('span');
+      name.className   = 'list-name';
+      name.textContent = a.message;
+      const badge = document.createElement('span');
+      badge.className   = 'badge ' + (a.alert_type === 'out_of_stock' ? 'badge-red' : 'badge-amber');
+      badge.textContent = a.alert_type.replace('_', ' ');
+      row.appendChild(name);
+      row.appendChild(badge);
+      alertsEl.appendChild(row);
+    });
+  }
+}
+
+loadDashboard();
+</script>
+{% endblock %}

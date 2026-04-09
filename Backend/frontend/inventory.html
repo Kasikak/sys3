@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+{% block title %}Inventory - Carol's IMS{% endblock %}
+
+{% block content %}
+<a href="/home" class="back-link">&#8592; Home</a>
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Inventory</h1>
+    <p class="page-sub" id="product-count"></p>
+  </div>
+  {% if role in ['owner', 'manager'] %}
+  <button class="btn btn-primary" onclick="openAddModal()">+ Add Product</button>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="filters">
+    <input type="text" id="search" class="form-input" placeholder="Search products..." oninput="loadProducts()" style="max-width:260px" />
+    <select id="category-filter" class="form-input" onchange="loadProducts()" style="max-width:180px">
+      <option value="">All Categories</option>
+    </select>
+  </div>
+  <div id="products-table">Loading...</div>
+</div>
+
+{% if role in ['owner', 'manager'] %}
+<!-- Add / Edit Modal -->
+<div class="modal-overlay hidden" id="item-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title" id="modal-title">Add Product</h2>
+      <button class="modal-close" onclick="closeModal()">&#x2715;</button>
+    </div>
+    <form id="item-form" onsubmit="handleSaveItem(event)">
+      <input type="hidden" id="item-id" />
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Product Name *</label>
+          <input type="text" id="item-name" class="form-input" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Category</label>
+          <input type="text" id="item-category" class="form-input" placeholder="e.g. Beverages" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Price *</label>
+          <input type="number" id="item-price" class="form-input" step="0.01" min="0" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Stock Quantity</label>
+          <input type="number" id="item-stock" class="form-input" min="0" value="0" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Reorder Threshold</label>
+          <input type="number" id="item-threshold" class="form-input" min="0" value="10" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="save-btn">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal-overlay hidden" id="delete-modal">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2 class="modal-title">Remove Product</h2>
+      <button class="modal-close" onclick="closeDeleteModal()">&#x2715;</button>
+    </div>
+    <p class="modal-body-text">Are you sure you want to remove <strong id="delete-name"></strong>?</p>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeDeleteModal()">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmDelete()">Remove</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+let deleteTargetId = null;
+const canEdit = {{ 'true' if role in ['owner', 'manager'] else 'false' }};
+
+async function loadCategories() {
+  const res   = await fetch('/api/get-items');
+  const items = await res.json();
+  const sel   = document.getElementById('category-filter');
+  while (sel.options.length > 1) sel.remove(1);
+  const seen = new Set();
+  items.forEach(p => {
+    const name = p.categories ? p.categories.name : null;
+    if (name && name !== 'Uncategorized' && !seen.has(name)) {
+      seen.add(name);
+      sel.add(new Option(name, name));
+    }
+  });
+}
+
+async function loadProducts() {
+  const search   = document.getElementById('search').value;
+  const category = document.getElementById('category-filter').value;
+  const params   = new URLSearchParams();
+  if (search)   params.set('search', search);
+  if (category) params.set('category', category);
+
+  const res      = await fetch('/api/get-items?' + params);
+  const products = await res.json();
+
+  document.getElementById('product-count').textContent = products.length + ' products';
+
+  const container = document.getElementById('products-table');
+  if (products.length === 0) {
+    container.innerHTML = '<p class="empty-text">No products found</p>';
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th>Category</th>
+          <th>Price</th>
+          <th>Stock</th>
+          <th>Threshold</th>
+          <th>Status</th>
+          ${canEdit ? '<th></th>' : ''}
+        </tr>
+      </thead>
+      <tbody>
+        ${products.map(p => {
+          const status      = p.stock === 0 ? 'out_of_stock' : p.stock <= p.reorder_threshold ? 'low_stock' : 'ok';
+          const statusLabel = status === 'out_of_stock' ? 'Out of Stock' : status === 'low_stock' ? 'Low Stock' : 'In Stock';
+          const statusClass = status === 'out_of_stock' ? 'badge-red' : status === 'low_stock' ? 'badge-amber' : 'badge-green';
+          const catName     = p.categories ? p.categories.name : '—';
+          return `<tr>
+            <td><strong>${p.name}</strong></td>
+            <td>${catName}</td>
+            <td>$${parseFloat(p.price).toFixed(2)}</td>
+            <td>${p.stock}</td>
+            <td>${p.reorder_threshold}</td>
+            <td><span class="badge ${statusClass}">${statusLabel}</span></td>
+            ${canEdit ? `<td class="table-actions">
+              <button class="btn btn-sm btn-outline" onclick='openEditModal(${JSON.stringify(p)})'>Edit</button>
+              <button class="btn btn-sm btn-danger" onclick="openDeleteModal('${p.id}','${p.name.replace(/'/g,"\\'")}')">Remove</button>
+            </td>` : ''}
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function openAddModal() {
+  document.getElementById('modal-title').textContent = 'Add Product';
+  document.getElementById('item-id').value = '';
+  document.getElementById('item-form').reset();
+  document.getElementById('item-name').readOnly = false;
+  document.getElementById('item-modal').classList.remove('hidden');
+}
+
+function openEditModal(p) {
+  document.getElementById('modal-title').textContent = 'Edit Product';
+  document.getElementById('item-id').value       = p.id;
+  document.getElementById('item-name').value     = p.name;
+  document.getElementById('item-name').readOnly  = true;
+  document.getElementById('item-category').value = p.categories ? p.categories.name : '';
+  document.getElementById('item-price').value    = p.price;
+  document.getElementById('item-stock').value    = p.stock;
+  document.getElementById('item-threshold').value = p.reorder_threshold;
+  document.getElementById('item-modal').classList.remove('hidden');
+}
+
+function closeModal() {
+  document.getElementById('item-modal').classList.add('hidden');
+  document.getElementById('item-name').readOnly = false;
+}
+
+function openDeleteModal(id, name) {
+  deleteTargetId = id;
+  document.getElementById('delete-name').textContent = name;
+  document.getElementById('delete-modal').classList.remove('hidden');
+}
+
+function closeDeleteModal() {
+  document.getElementById('delete-modal').classList.add('hidden');
+  deleteTargetId = null;
+}
+
+async function handleSaveItem(e) {
+  e.preventDefault();
+  const id  = document.getElementById('item-id').value;
+  const btn = document.getElementById('save-btn');
+  btn.disabled = true;
+
+  const body = {
+    name:              document.getElementById('item-name').value,
+    category:          document.getElementById('item-category').value || 'Uncategorized',
+    price:             parseFloat(document.getElementById('item-price').value),
+    stock:             parseInt(document.getElementById('item-stock').value),
+    reorder_threshold: parseInt(document.getElementById('item-threshold').value)
+  };
+
+  const url    = id ? `/api/update-item/${encodeURIComponent(id)}` : '/api/add-item';
+  const method = id ? 'PUT' : 'POST';
+
+  const res  = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await res.json();
+
+  btn.disabled = false;
+  if (data.success) {
+    closeModal();
+    showToast(id ? 'Product updated' : 'Product added');
+    loadProducts();
+  } else {
+    showToast(data.error || 'Failed to save product', 'error');
+  }
+}
+
+async function confirmDelete() {
+  if (!deleteTargetId) return;
+  const res  = await fetch(`/api/remove-item/${encodeURIComponent(deleteTargetId)}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (data.success) {
+    closeDeleteModal();
+    showToast('Product removed');
+    loadProducts();
+  } else {
+    showToast(data.error || 'Failed to remove product', 'error');
+  }
+}
+
+loadCategories();
+loadProducts();
+</script>
+{% endblock %}

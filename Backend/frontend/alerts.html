@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Alerts - Carol's IMS{% endblock %}
+
+{% block content %}
+<a href="/home" class="back-link">&#8592; Home</a>
+<div class="page-header">
+  <h1 class="page-title">Alerts</h1>
+  <p class="page-sub">Stock alerts and notifications</p>
+</div>
+
+<div class="tab-group">
+  <button class="tab-btn active" id="tab-active"   onclick="loadAlerts(false)">Active</button>
+  <button class="tab-btn"        id="tab-resolved" onclick="loadAlerts(true)">Resolved</button>
+</div>
+
+<div id="alerts-container">Loading...</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const canResolve = {{ 'true' if role in ['owner', 'manager'] else 'false' }};
+let currentResolved = false;
+
+async function loadAlerts(resolved) {
+  currentResolved = resolved;
+  document.getElementById('tab-active').classList.toggle('active', !resolved);
+  document.getElementById('tab-resolved').classList.toggle('active', resolved);
+
+  const container = document.getElementById('alerts-container');
+  container.innerHTML = '<div class="card"><p class="empty-text">Loading...</p></div>';
+
+  let alerts;
+  try {
+    const res = await fetch(`/api/alerts?resolved=${resolved}`);
+    if (!res.ok) {
+      container.innerHTML = `<div class="card"><p class="empty-text" style="color:#c00">Error ${res.status}: failed to load alerts</p></div>`;
+      return;
+    }
+    alerts = await res.json();
+  } catch (err) {
+    container.innerHTML = `<div class="card"><p class="empty-text" style="color:#c00">Could not reach server</p></div>`;
+    return;
+  }
+
+  if (!Array.isArray(alerts) || alerts.length === 0) {
+    container.innerHTML = `<div class="card"><p class="empty-text">No ${resolved ? 'resolved' : 'active'} alerts</p></div>`;
+    return;
+  }
+
+  const card  = document.createElement('div');
+  card.className = 'card';
+  const table = document.createElement('table');
+  table.className = 'table';
+
+  const thead = document.createElement('thead');
+  thead.innerHTML = `<tr>
+    <th>Product</th><th>Stock</th><th>Type</th><th>Message</th><th>Date</th>
+    ${canResolve && !resolved ? '<th></th>' : ''}
+  </tr>`;
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  alerts.forEach(a => {
+    const tr = document.createElement('tr');
+
+    const tdName = document.createElement('td');
+    tdName.innerHTML = `<strong>${a.products ? a.products.name : 'Unknown'}</strong>`;
+
+    const tdStock = document.createElement('td');
+    tdStock.textContent = a.products ? a.products.stock : '—';
+
+    const tdType = document.createElement('td');
+    const badge = document.createElement('span');
+    badge.className = `badge ${a.alert_type === 'out_of_stock' ? 'badge-red' : 'badge-amber'}`;
+    badge.textContent = a.alert_type.replace('_', ' ');
+    tdType.appendChild(badge);
+
+    const tdMsg = document.createElement('td');
+    tdMsg.textContent = a.message;
+
+    const tdDate = document.createElement('td');
+    tdDate.textContent = new Date(a.created_at).toLocaleString();
+
+    tr.appendChild(tdName);
+    tr.appendChild(tdStock);
+    tr.appendChild(tdType);
+    tr.appendChild(tdMsg);
+    tr.appendChild(tdDate);
+
+    if (canResolve && !resolved) {
+      const tdBtn = document.createElement('td');
+      const btn   = document.createElement('button');
+      btn.className   = 'btn btn-sm btn-outline';
+      btn.textContent = 'Resolve';
+      btn.addEventListener('click', () => resolveAlert(a.id));
+      tdBtn.appendChild(btn);
+      tr.appendChild(tdBtn);
+    }
+
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(tbody);
+  card.appendChild(table);
+  container.innerHTML = '';
+  container.appendChild(card);
+}
+
+async function resolveAlert(id) {
+  const res  = await fetch(`/api/alerts/${id}/resolve`, { method: 'PUT' });
+  const data = await res.json();
+  if (data.success) {
+    showToast('Alert resolved');
+    loadAlerts(currentResolved);
+  } else {
+    showToast(data.error || 'Failed to resolve alert', 'error');
+  }
+}
+
+loadAlerts(false);
+</script>
+{% endblock %}

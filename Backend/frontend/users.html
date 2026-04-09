@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% block title %}Users - Carol's IMS{% endblock %}
+
+{% block content %}
+<a href="/home" class="back-link">&#8592; Home</a>
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Users</h1>
+    <p class="page-sub" id="user-count"></p>
+  </div>
+  {% if role == 'owner' %}
+  <button class="btn btn-primary" onclick="openAddUser()">+ Add User</button>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div id="users-table">Loading...</div>
+</div>
+
+{% if role == 'owner' %}
+<!-- Add User Modal -->
+<div class="modal-overlay hidden" id="add-user-modal">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2 class="modal-title">Add User</h2>
+      <button class="modal-close" onclick="closeAddUser()">&#x2715;</button>
+    </div>
+    <form onsubmit="handleAddUser(event)">
+      <div class="form-group">
+        <label class="form-label">Full Name *</label>
+        <input type="text" id="new-fullname" class="form-input" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Username *</label>
+        <input type="text" id="new-username" class="form-input" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Role</label>
+        <select id="new-role" class="form-input">
+          <option value="cashier">Cashier</option>
+          <option value="manager">Manager</option>
+          <option value="owner">Owner</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">PIN *</label>
+        <div class="pin-entry-wrap">
+          <div class="pin-entry-dots" id="new-pin-dots">
+            <span class="pin-dot"></span>
+            <span class="pin-dot"></span>
+            <span class="pin-dot"></span>
+            <span class="pin-dot"></span>
+            <span class="pin-dot"></span>
+            <span class="pin-dot"></span>
+            <span class="pin-dot"></span>
+            <span class="pin-dot"></span>
+          </div>
+          <div class="pin-mini-pad">
+            <button type="button" class="num-key" onclick="pinPress('1')">1</button>
+            <button type="button" class="num-key" onclick="pinPress('2')">2</button>
+            <button type="button" class="num-key" onclick="pinPress('3')">3</button>
+            <button type="button" class="num-key" onclick="pinPress('4')">4</button>
+            <button type="button" class="num-key" onclick="pinPress('5')">5</button>
+            <button type="button" class="num-key" onclick="pinPress('6')">6</button>
+            <button type="button" class="num-key" onclick="pinPress('7')">7</button>
+            <button type="button" class="num-key" onclick="pinPress('8')">8</button>
+            <button type="button" class="num-key" onclick="pinPress('9')">9</button>
+            <button type="button" class="num-key num-clear" onclick="pinClear()">Clear</button>
+            <button type="button" class="num-key" onclick="pinPress('0')">0</button>
+            <button type="button" class="num-key num-back" onclick="pinBack()">&#9003;</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeAddUser()">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="add-user-btn">Add User</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const myId   = '{{ session.get("user_id", "") }}';
+const myRole = '{{ role }}';
+let newPin   = '';
+
+async function loadUsers() {
+  const res   = await fetch('/api/users');
+  const users = await res.json();
+  document.getElementById('user-count').textContent = users.length + ' user(s)';
+
+  const container = document.getElementById('users-table');
+  if (users.length === 0) {
+    container.innerHTML = '<p class="empty-text">No users registered yet</p>';
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Username</th>
+          <th>Role</th>
+          <th>Joined</th>
+          ${myRole === 'owner' ? '<th>Change Role</th>' : ''}
+        </tr>
+      </thead>
+      <tbody>
+        ${users.map(u => `<tr>
+          <td><strong>${u.full_name}</strong></td>
+          <td>${u.username}</td>
+          <td><span class="badge ${u.role === 'owner' ? 'badge-amber' : u.role === 'manager' ? 'badge-blue' : 'badge-green'}">${u.role}</span></td>
+          <td>${u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
+          ${myRole === 'owner' ? `<td>
+            ${u.id !== myId ? `<select class="form-input" style="width:auto" onchange="updateRole('${u.id}', this.value)">
+              <option value="cashier" ${u.role === 'cashier' ? 'selected' : ''}>Cashier</option>
+              <option value="manager" ${u.role === 'manager' ? 'selected' : ''}>Manager</option>
+              <option value="owner"   ${u.role === 'owner'   ? 'selected' : ''}>Owner</option>
+            </select>` : '<span style="color:#aaa">You</span>'}
+          </td>` : ''}
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+async function updateRole(userId, role) {
+  const res  = await fetch(`/api/users/${userId}/role`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role })
+  });
+  const data = await res.json();
+  if (data.success) {
+    showToast('Role updated');
+  } else {
+    showToast(data.error || 'Failed to update role', 'error');
+    loadUsers();
+  }
+}
+
+function openAddUser() {
+  newPin = '';
+  updatePinDots();
+  document.getElementById('add-user-modal').classList.remove('hidden');
+}
+
+function closeAddUser() {
+  document.getElementById('add-user-modal').classList.add('hidden');
+  document.getElementById('new-fullname').value = '';
+  document.getElementById('new-username').value = '';
+  document.getElementById('new-role').value = 'cashier';
+  newPin = '';
+  updatePinDots();
+}
+
+function pinPress(k) {
+  if (newPin.length >= 8) return;
+  newPin += k;
+  updatePinDots();
+}
+
+function pinBack() {
+  newPin = newPin.slice(0, -1);
+  updatePinDots();
+}
+
+function pinClear() {
+  newPin = '';
+  updatePinDots();
+}
+
+function updatePinDots() {
+  document.querySelectorAll('#new-pin-dots .pin-dot').forEach((d, i) => {
+    d.classList.toggle('filled', i < newPin.length);
+  });
+}
+
+async function handleAddUser(e) {
+  e.preventDefault();
+  if (newPin.length < 3) {
+    showToast('PIN must be at least 3 digits', 'error');
+    return;
+  }
+  const btn = document.getElementById('add-user-btn');
+  btn.disabled = true;
+
+  const res  = await fetch('/api/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      full_name: document.getElementById('new-fullname').value.trim(),
+      username:  document.getElementById('new-username').value.trim(),
+      role:      document.getElementById('new-role').value,
+      pin:       newPin
+    })
+  });
+  const data = await res.json();
+  btn.disabled = false;
+
+  if (data.success) {
+    showToast('User added successfully');
+    closeAddUser();
+    loadUsers();
+  } else {
+    showToast(data.error || 'Failed to add user', 'error');
+  }
+}
+
+loadUsers();
+</script>
+{% endblock %}

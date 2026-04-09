@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+{% block title %}Sales - Carol's IMS{% endblock %}
+
+{% block content %}
+<a href="/home" class="back-link">&#8592; Home</a>
+<div class="page-header">
+  <h1 class="page-title">Sales</h1>
+</div>
+
+<div class="tab-group">
+  <button class="tab-btn active" id="tab-pos"     onclick="showTab('pos')">New Sale</button>
+  <button class="tab-btn"        id="tab-history" onclick="showTab('history')">Sale History</button>
+</div>
+
+<!-- New Sale Panel -->
+<div id="pos-panel">
+  <div class="pos-layout">
+    <div class="pos-products card">
+      <input type="text" id="product-search" class="form-input" placeholder="Search products..." oninput="filterProducts()" style="margin-bottom:1rem" />
+      <div id="product-grid">Loading...</div>
+    </div>
+
+    <div class="pos-cart card">
+      <h2 class="card-title" style="margin-bottom:1rem">Cart</h2>
+      <div id="cart-items"><p class="empty-text">No items added yet</p></div>
+      <div id="cart-total-area" class="hidden">
+        <div class="cart-total">
+          <span>Total</span>
+          <span id="cart-total">$0.00</span>
+        </div>
+        <div class="form-group" style="margin-top:0.75rem">
+          <label class="form-label">Payment Method</label>
+          <select id="payment-method" class="form-input">
+            <option value="cash">Cash</option>
+            <option value="card">Card</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <button class="btn btn-primary btn-full" style="margin-top:0.75rem" onclick="processSale()">Process Sale</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Sale History Panel -->
+<div id="history-panel" class="hidden">
+  <div class="card">
+    <div id="sales-history">Loading...</div>
+  </div>
+</div>
+
+<!-- Receipt Modal -->
+<div class="modal-overlay hidden" id="receipt-modal">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2 class="modal-title">Sale Complete</h2>
+    </div>
+    <div id="receipt-content"></div>
+    <div class="modal-footer">
+      <button class="btn btn-primary btn-full" onclick="closeReceipt()">Done</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allProducts = [];
+let cart = {};
+
+async function loadProducts() {
+  const res = await fetch('/api/get-items');
+  allProducts = await res.json();
+  renderProductGrid(allProducts);
+}
+
+function filterProducts() {
+  const q = document.getElementById('product-search').value.toLowerCase();
+  renderProductGrid(allProducts.filter(p => p.name.toLowerCase().includes(q)));
+}
+
+function renderProductGrid(products) {
+  const grid    = document.getElementById('product-grid');
+  const inStock = products.filter(p => p.stock > 0);
+  if (inStock.length === 0) {
+    grid.innerHTML = '<p class="empty-text">No products available</p>';
+    return;
+  }
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'product-grid';
+
+  inStock.forEach(p => {
+    const card = document.createElement('div');
+    card.className = 'product-card';
+    card.innerHTML = `
+      <div class="product-card-name">${p.name}</div>
+      <div class="product-card-price">$${parseFloat(p.price).toFixed(2)}</div>
+      <div class="product-card-stock">${p.stock} in stock</div>
+    `;
+    card.addEventListener('click', () => addToCart(p.id, p.name, p.price, p.stock));
+    wrapper.appendChild(card);
+  });
+
+  grid.innerHTML = '';
+  grid.appendChild(wrapper);
+}
+
+function addToCart(id, name, price, stock) {
+  if (cart[id]) {
+    if (cart[id].qty >= stock) { showToast('Not enough stock', 'error'); return; }
+    cart[id].qty++;
+  } else {
+    cart[id] = { id, name, price: parseFloat(price), qty: 1, maxStock: stock };
+  }
+  renderCart();
+}
+
+function removeFromCart(id) { delete cart[id]; renderCart(); }
+
+function changeQty(id, delta) {
+  if (!cart[id]) return;
+  const newQty = cart[id].qty + delta;
+  if (newQty <= 0) { delete cart[id]; }
+  else if (newQty > cart[id].maxStock) { showToast('Not enough stock', 'error'); return; }
+  else { cart[id].qty = newQty; }
+  renderCart();
+}
+
+function renderCart() {
+  const items     = Object.values(cart);
+  const cartEl    = document.getElementById('cart-items');
+  const totalArea = document.getElementById('cart-total-area');
+
+  if (items.length === 0) {
+    cartEl.innerHTML = '<p class="empty-text">No items added yet</p>';
+    totalArea.classList.add('hidden');
+    return;
+  }
+
+  let total = 0;
+  cartEl.innerHTML = '';
+
+  items.forEach(item => {
+    total += item.price * item.qty;
+
+    const row = document.createElement('div');
+    row.className = 'cart-item';
+    row.innerHTML = `
+      <div class="cart-item-info">
+        <span class="cart-item-name">${item.name}</span>
+        <span class="cart-item-price">$${(item.price * item.qty).toFixed(2)}</span>
+      </div>
+      <div class="cart-item-controls">
+        <button class="qty-btn" data-action="dec">-</button>
+        <span class="qty-val">${item.qty}</span>
+        <button class="qty-btn" data-action="inc">+</button>
+        <button class="remove-btn" data-action="remove">x</button>
+      </div>
+    `;
+    row.querySelector('[data-action="dec"]').addEventListener('click',    () => changeQty(item.id, -1));
+    row.querySelector('[data-action="inc"]').addEventListener('click',    () => changeQty(item.id,  1));
+    row.querySelector('[data-action="remove"]').addEventListener('click', () => removeFromCart(item.id));
+    cartEl.appendChild(row);
+  });
+
+  document.getElementById('cart-total').textContent = '$' + total.toFixed(2);
+  totalArea.classList.remove('hidden');
+}
+
+async function processSale() {
+  const items = Object.values(cart).map(i => ({
+    product_id: i.id,
+    quantity:   i.qty,
+    price:      i.price
+  }));
+  if (items.length === 0) return;
+
+  const res  = await fetch('/api/sales', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items, payment_method: document.getElementById('payment-method').value })
+  });
+  const data = await res.json();
+
+  if (data.success) {
+    const saleItems   = Object.values(cart);
+    const total       = saleItems.reduce((s, i) => s + i.price * i.qty, 0);
+    const paymentMethod = document.getElementById('payment-method').value;
+    const now         = new Date().toLocaleString();
+
+    const receiptEl = document.getElementById('receipt-content');
+    receiptEl.innerHTML = '';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'receipt';
+
+    // Header
+    const header = document.createElement('div');
+    header.style.cssText = 'text-align:center;margin-bottom:1rem';
+    header.innerHTML = `
+      <div style="font-size:1.1rem;font-weight:bold">Carol's Distributors</div>
+      <div style="font-size:0.8rem;color:#888;margin-top:0.2rem">${now}</div>
+      <div style="font-size:0.8rem;color:#888">Transaction #${data.sale_id}</div>
+    `;
+    wrap.appendChild(header);
+
+    // Divider
+    const div1 = document.createElement('hr');
+    div1.style.cssText = 'border:none;border-top:1px solid #eee;margin:0.75rem 0';
+    wrap.appendChild(div1);
+
+    // Line items
+    saleItems.forEach(i => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;justify-content:space-between;margin-bottom:0.4rem;font-size:0.875rem';
+      const left  = document.createElement('span');
+      left.textContent = `${i.name} x ${i.qty}`;
+      const right = document.createElement('span');
+      right.textContent = `$${(i.price * i.qty).toFixed(2)}`;
+      row.appendChild(left);
+      row.appendChild(right);
+      wrap.appendChild(row);
+    });
+
+    // Divider
+    const div2 = document.createElement('hr');
+    div2.style.cssText = 'border:none;border-top:1px solid #eee;margin:0.75rem 0';
+    wrap.appendChild(div2);
+
+    // Total
+    const totalRow = document.createElement('div');
+    totalRow.style.cssText = 'display:flex;justify-content:space-between;font-weight:bold;font-size:1rem;margin-bottom:0.4rem';
+    const totalLabel = document.createElement('span');
+    totalLabel.textContent = 'Total';
+    const totalVal = document.createElement('span');
+    totalVal.textContent = `$${total.toFixed(2)}`;
+    totalRow.appendChild(totalLabel);
+    totalRow.appendChild(totalVal);
+    wrap.appendChild(totalRow);
+
+    // Payment method
+    const pmRow = document.createElement('div');
+    pmRow.style.cssText = 'font-size:0.8rem;color:#888;margin-bottom:1rem;text-transform:capitalize';
+    pmRow.textContent = `Paid by ${paymentMethod}`;
+    wrap.appendChild(pmRow);
+
+    // Success message
+    const success = document.createElement('div');
+    success.style.cssText = 'text-align:center;font-weight:bold;color:#1b5e20;padding:0.5rem;background:#e8f5e9;border:1px solid #81c784';
+    success.textContent = '✓ Sale Complete';
+    wrap.appendChild(success);
+
+    receiptEl.appendChild(wrap);
+    document.getElementById('receipt-modal').classList.remove('hidden');
+    cart = {};
+    renderCart();
+    loadProducts();
+  } else {
+    showToast(data.error || 'Failed to process sale', 'error');
+  }
+}
+
+function closeReceipt() {
+  document.getElementById('receipt-modal').classList.add('hidden');
+}
+
+async function loadHistory() {
+  const res   = await fetch('/api/sales?limit=50');
+  const sales = await res.json();
+  const container = document.getElementById('sales-history');
+
+  if (sales.length === 0) {
+    container.innerHTML = '<p class="empty-text">No sales recorded yet</p>';
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Transaction</th>
+          <th>Date</th>
+          <th>Cashier</th>
+          <th>Items</th>
+          <th>Payment</th>
+          <th>Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${sales.map(s => {
+          const itemCount = (s.sale_items || []).reduce((a, i) => a + i.quantity, 0);
+          const cashier   = s.profiles ? s.profiles.full_name : 'N/A';
+          const date      = new Date(s.created_at).toLocaleString();
+          return `<tr>
+            <td>#${s.sale_id}</td>
+            <td>${date}</td>
+            <td>${cashier}</td>
+            <td>${itemCount} item(s)</td>
+            <td>${s.payment_method}</td>
+            <td><strong>$${parseFloat(s.total).toFixed(2)}</strong></td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function showTab(tab) {
+  document.getElementById('pos-panel').classList.toggle('hidden', tab !== 'pos');
+  document.getElementById('history-panel').classList.toggle('hidden', tab !== 'history');
+  document.getElementById('tab-pos').classList.toggle('active', tab === 'pos');
+  document.getElementById('tab-history').classList.toggle('active', tab === 'history');
+  if (tab === 'history') loadHistory();
+}
+
+loadProducts();
+</script>
+{% endblock %}

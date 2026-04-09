@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Reports - Carol's IMS{% endblock %}
+
+{% block content %}
+<a href="/home" class="back-link">&#8592; Home</a>
+<div class="page-header">
+  <h1 class="page-title">Reports</h1>
+  <p class="page-sub">Generate sales and inventory reports</p>
+</div>
+
+<div class="card">
+  <div class="filters">
+    <div class="form-group" style="margin:0">
+      <label class="form-label">Start Date</label>
+      <input type="date" id="start-date" class="form-input" />
+    </div>
+    <div class="form-group" style="margin:0">
+      <label class="form-label">End Date</label>
+      <input type="date" id="end-date" class="form-input" />
+    </div>
+    <div style="display:flex;gap:0.5rem;align-items:flex-end">
+      <button class="btn btn-primary" onclick="generateReport()">Generate</button>
+      <button class="btn btn-outline hidden" id="download-btn" onclick="downloadCSV()">Download CSV</button>
+    </div>
+  </div>
+</div>
+
+<div id="report-results" class="hidden">
+  <div class="stats-grid" style="margin-bottom:1.25rem">
+    <div class="stat-card">
+      <div class="stat-value" id="r-revenue">—</div>
+      <div class="stat-label">Total Revenue</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="r-sales">—</div>
+      <div class="stat-label">Total Sales</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="r-items">—</div>
+      <div class="stat-label">Items Sold</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="r-stock-alerts">—</div>
+      <div class="stat-label">Stock Alerts</div>
+    </div>
+  </div>
+
+  <div class="card" id="daily-chart-card">
+    <h3 class="card-title" style="margin-bottom:1rem">Daily Revenue</h3>
+    <div id="daily-chart"></div>
+  </div>
+
+  <div class="card">
+    <h3 class="card-title" style="margin-bottom:1rem">Top Products</h3>
+    <div id="top-products-table"></div>
+  </div>
+</div>
+
+<div id="report-empty" class="card" style="text-align:center;padding:3rem">
+  <p style="color:#888">Select a date range and click Generate.</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let reportData = null;
+
+// Default dates to current month
+(function() {
+  const now   = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  const today = now.toISOString().split('T')[0];
+  document.getElementById('start-date').value = first;
+  document.getElementById('end-date').value   = today;
+})();
+
+async function generateReport() {
+  const start = document.getElementById('start-date').value;
+  const end   = document.getElementById('end-date').value;
+  if (!start || !end) { showToast('Please select start and end dates', 'error'); return; }
+
+  document.getElementById('report-results').classList.add('hidden');
+  document.getElementById('report-empty').classList.add('hidden');
+
+  const res  = await fetch(`/api/reports?start_date=${start}&end_date=${end}`);
+  reportData = await res.json();
+
+  document.getElementById('r-revenue').textContent     = '$' + reportData.total_revenue.toFixed(2);
+  document.getElementById('r-sales').textContent       = reportData.total_sales;
+  document.getElementById('r-items').textContent       = reportData.total_items_sold;
+  document.getElementById('r-stock-alerts').textContent = reportData.low_stock_count + reportData.out_of_stock_count;
+
+  renderDailyChart(reportData.sales_by_day);
+  renderTopProducts(reportData.top_products);
+
+  document.getElementById('report-results').classList.remove('hidden');
+  document.getElementById('download-btn').classList.remove('hidden');
+}
+
+function renderDailyChart(days) {
+  const container = document.getElementById('daily-chart');
+  const card      = document.getElementById('daily-chart-card');
+  if (days.length === 0) { card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+  const max = Math.max(...days.map(d => d.total), 1);
+  container.innerHTML = days.map(d => `
+    <div class="bar-row">
+      <span class="bar-date">${d.date}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${(d.total/max)*100}%"></div></div>
+      <span class="bar-value">$${d.total.toFixed(2)}</span>
+      <span class="bar-count">${d.count} sale(s)</span>
+    </div>
+  `).join('');
+}
+
+function renderTopProducts(products) {
+  const container = document.getElementById('top-products-table');
+  if (products.length === 0) {
+    container.innerHTML = '<p class="empty-text">No sales data for this period</p>';
+    return;
+  }
+  container.innerHTML = `
+    <table class="table">
+      <thead><tr><th>#</th><th>Product</th><th>Qty Sold</th><th>Revenue</th></tr></thead>
+      <tbody>
+        ${products.map((p, i) => `<tr>
+          <td>${i + 1}</td>
+          <td><strong>${p.name}</strong></td>
+          <td>${p.qty}</td>
+          <td><strong>$${p.revenue.toFixed(2)}</strong></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function downloadCSV() {
+  if (!reportData) return;
+  const start = document.getElementById('start-date').value;
+  const end   = document.getElementById('end-date').value;
+  const rows  = [
+    ['Report Period', `${start} to ${end}`],
+    ['Total Revenue', `$${reportData.total_revenue.toFixed(2)}`],
+    ['Total Sales', reportData.total_sales],
+    ['Total Items Sold', reportData.total_items_sold],
+    [],
+    ['Product', 'Qty Sold', 'Revenue'],
+    ...reportData.top_products.map(p => [p.name, p.qty, `$${p.revenue.toFixed(2)}`])
+  ];
+  const csv = rows.map(r => r.join(',')).join('\n');
+  const a   = document.createElement('a');
+  a.href     = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = `report_${start}_${end}.csv`;
+  a.click();
+}
+</script>
+{% endblock %}

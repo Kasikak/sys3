@@ -1,73 +1,69 @@
 from flask import Blueprint, request, jsonify
-from models import db, Item
+from services.item_service import ItemService
+from routes.pages import login_required
 
 items_bp = Blueprint('items', __name__)
 
 
-@items_bp.route('/add-item', methods=['POST'])
-def add_item():
-    data = request.get_json()
-
-    item_name = data.get('ItemName')
-    quantity  = data.get('Quantity')
-    price     = data.get('Price')
-    stock     = data.get('Stock')
-    category  = data.get('Category', 'Uncategorized')
-
-    if not all([item_name, quantity is not None, price is not None, stock is not None]):
-        return jsonify({'error': 'All fields are required'}), 400
-
-    new_item = Item(ItemName=item_name, Quantity=quantity, Price=price, Stock=stock, Category=category)
-    db.session.add(new_item)
-    db.session.commit()
-
-    return jsonify({'message': f'"{item_name}" added successfully'}), 201
-
-
-@items_bp.route('/remove-item', methods=['DELETE'])
-def remove_item():
-    data = request.get_json()
-    item_name = data.get('ItemName')
-
-    item = Item.query.filter_by(ItemName=item_name).first()
-    if not item:
-        return jsonify({'error': 'Item not found'}), 404
-
-    db.session.delete(item)
-    db.session.commit()
-
-    return jsonify({'message': f'"{item_name}" deleted successfully'}), 200
-
-
-@items_bp.route('/update-item', methods=['PUT'])
-def update_item():
-    data = request.get_json()
-    item_name = data.get('ItemName')
-
-    item = Item.query.filter_by(ItemName=item_name).first()
-    if not item:
-        return jsonify({'error': 'Item not found'}), 404
-
-    if data.get('Quantity') is not None:
-        item.Quantity = data['Quantity']
-    if data.get('Price') is not None:
-        item.Price = data['Price']
-    if data.get('Stock') is not None:
-        item.Stock = data['Stock']
-    if data.get('Category') is not None:
-        item.Category = data['Category']
-
-    db.session.commit()
-
-    return jsonify({'message': f'"{item_name}" updated successfully'}), 200
-
-@items_bp.route('/get-items', methods=['GET'])
+@items_bp.route('/api/get-items')
+@login_required
 def get_items():
-    items = Item.query.all()
+    search   = request.args.get('search', '')
+    category = request.args.get('category', '')
+    items    = ItemService.get_all(search, category)
     return jsonify([{
-        'ItemName': item.ItemName,
-        'Quantity': item.Quantity,
-        'Price':    item.Price,
-        'Stock':    item.Stock,
-        'Category': item.Category
-    } for item in items]), 200
+        'id':                i.ItemName,
+        'name':              i.ItemName,
+        'price':             i.Price,
+        'stock':             i.Stock,
+        'reorder_threshold': i.reorderThreshold,
+        'categories':        {'name': i.Category} if i.Category else None
+    } for i in items])
+
+
+@items_bp.route('/api/add-item', methods=['POST'])
+@login_required
+def add_item():
+    data = request.get_json() or {}
+    name = data.get('name', '').strip()
+    if not name:
+        return jsonify({'success': False, 'error': 'Item name is required'}), 400
+    try:
+        price             = float(data.get('price', 0))
+        stock             = int(data.get('stock', 0))
+        reorder_threshold = int(data.get('reorder_threshold', 10))
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'error': 'Invalid price, stock, or threshold'}), 400
+    if price < 0 or stock < 0 or reorder_threshold < 0:
+        return jsonify({'success': False, 'error': 'Values cannot be negative'}), 400
+    _, error = ItemService.add(name, price, stock, data.get('category', 'Uncategorized'), reorder_threshold)
+    if error:
+        return jsonify({'success': False, 'error': error}), 400
+    return jsonify({'success': True}), 201
+
+
+@items_bp.route('/api/update-item/<item_id>', methods=['PUT'])
+@login_required
+def update_item(item_id):
+    data = request.get_json() or {}
+    try:
+        price             = float(data.get('price', 0))
+        stock             = int(data.get('stock', 0))
+        reorder_threshold = int(data.get('reorder_threshold', 10))
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'error': 'Invalid price, stock, or threshold'}), 400
+    if price < 0 or stock < 0 or reorder_threshold < 0:
+        return jsonify({'success': False, 'error': 'Values cannot be negative'}), 400
+    _, error = ItemService.update(item_id, price, stock, data.get('category', ''), reorder_threshold)
+    if error:
+        return jsonify({'success': False, 'error': error}), 404
+    return jsonify({'success': True})
+
+
+@items_bp.route('/api/remove-item/<item_id>', methods=['DELETE'])
+@login_required
+def remove_item(item_id):
+    _, error = ItemService.delete(item_id)
+    if error:
+        return jsonify({'success': False, 'error': error}), 404
+    return jsonify({'success': True})
