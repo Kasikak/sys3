@@ -21,6 +21,11 @@ def login():
     if error:
         return jsonify({'success': False, 'error': error}), 401
 
+    from models import db
+    from datetime import datetime, timezone
+    user.last_login = datetime.now(timezone.utc)
+    db.session.commit()
+
     session['user_id']   = user.userID
     session['full_name'] = user.full_name
     session['role']      = user.role.roleName.lower()

@@ -8,6 +8,8 @@ reports_bp = Blueprint('reports', __name__)
 @reports_bp.route('/api/reports')
 @login_required
 def get_report():
+    if session.get('role') not in ['owner', 'manager']:
+        return jsonify({'error': 'Forbidden'}), 403
     start = request.args.get('start_date')
     end   = request.args.get('end_date')
 

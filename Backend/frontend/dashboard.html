@@ -39,15 +39,28 @@
   <div class="card">
     <div class="card-header">
       <h2 class="card-title">Recent Alerts</h2>
+      {% if role in ['owner', 'manager'] %}
       <a href="/alerts" class="btn btn-sm btn-outline">View All</a>
+      {% endif %}
     </div>
     <div id="recent-alerts">Loading...</div>
   </div>
 </div>
+
+{% if role in ['owner', 'manager'] %}
+<div class="card" style="margin-top:1rem">
+  <div class="card-header">
+    <h2 class="card-title">Recent Logins</h2>
+  </div>
+  <div id="recent-logins">Loading...</div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
+const myRole = '{{ role }}';
+
 async function loadDashboard() {
   const res  = await fetch('/api/dashboard');
   const data = await res.json();
@@ -95,6 +108,35 @@ async function loadDashboard() {
       row.appendChild(badge);
       alertsEl.appendChild(row);
     });
+  }
+
+  if (myRole === 'owner' || myRole === 'manager') {
+    const loginsEl = document.getElementById('recent-logins');
+    loginsEl.innerHTML = '';
+    if (!data.recent_logins || data.recent_logins.length === 0) {
+      loginsEl.innerHTML = '<p class="empty-text">No logins recorded yet</p>';
+    } else {
+      data.recent_logins.forEach(u => {
+        const row  = document.createElement('div');
+        row.className = 'list-item';
+        const name = document.createElement('span');
+        name.className   = 'list-name';
+        name.textContent = u.full_name;
+        const right = document.createElement('div');
+        right.style.cssText = 'display:flex;gap:0.5rem;align-items:center';
+        const badge = document.createElement('span');
+        badge.className   = 'badge ' + (u.role === 'owner' ? 'badge-amber' : u.role === 'manager' ? 'badge-blue' : 'badge-green');
+        badge.textContent = u.role;
+        const time = document.createElement('span');
+        time.className   = 'text-muted';
+        time.textContent = new Date(u.last_login).toLocaleString();
+        right.appendChild(badge);
+        right.appendChild(time);
+        row.appendChild(name);
+        row.appendChild(right);
+        loginsEl.appendChild(row);
+      });
+    }
   }
 }
 

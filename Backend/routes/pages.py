@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, redirect, session
-from models import Item, Sale
+from models import Item, Sale, User
 from datetime import datetime, timezone
 
 pages_bp = Blueprint('pages', __name__)
@@ -54,12 +54,16 @@ def sales():
 @pages_bp.route('/reports')
 @login_required
 def reports():
+    if session.get('role') not in ['owner', 'manager']:
+        return redirect('/home')
     return render_template('reports.html', **get_ctx())
 
 
 @pages_bp.route('/alerts')
 @login_required
 def alerts():
+    if session.get('role') not in ['owner', 'manager']:
+        return redirect('/home')
     return render_template('alerts.html', **get_ctx())
 
 
@@ -81,7 +85,6 @@ def api_dashboard():
     low_stock   = [i for i in items if 0 < i.Stock <= i.reorderThreshold]
     out_stock   = [i for i in items if i.Stock == 0]
 
-    # Build alerts directly from stock levels — always accurate
     alert_items = out_stock + low_stock
     recent_alerts = []
     for i in alert_items[:5]:
@@ -90,6 +93,8 @@ def api_dashboard():
         else:
             recent_alerts.append({'message': f'"{i.ItemName}" is low on stock ({i.Stock} remaining)', 'alert_type': 'low_stock'})
 
+    recent_logins = User.query.filter(User.last_login != None).order_by(User.last_login.desc()).limit(8).all()
+
     return jsonify({
         'total_products':     len(items),
         'revenue_today':      round(sum(s.total for s in today_sales), 2),
@@ -97,5 +102,6 @@ def api_dashboard():
         'low_stock_count':    len(low_stock),
         'out_of_stock_count': len(out_stock),
         'low_stock_items':    [{'name': i.ItemName, 'stock': i.Stock} for i in (out_stock + low_stock)[:8]],
-        'recent_alerts':      recent_alerts
+        'recent_alerts':      recent_alerts,
+        'recent_logins':      [{'full_name': u.full_name, 'role': u.role.roleName.lower(), 'last_login': u.last_login.isoformat()} for u in recent_logins]
     })

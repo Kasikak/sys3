@@ -27,6 +27,7 @@
       <span class="home-tile-arrow">&#8594;</span>
     </a>
 
+    {% if role in ['owner', 'manager'] %}
     <a href="/alerts" class="home-tile">
       <div class="home-tile-icon">&#9888;</div>
       <div class="home-tile-label">Alerts</div>
@@ -38,6 +39,7 @@
       <div class="home-tile-label">Reports</div>
       <span class="home-tile-arrow">&#8594;</span>
     </a>
+    {% endif %}
 
     {% if role in ['owner', 'manager'] %}
     <a href="/users" class="home-tile">

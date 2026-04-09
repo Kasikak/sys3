@@ -26,6 +26,7 @@ class User(db.Model):
     created_at      = db.Column(db.DateTime, default=utcnow, nullable=False)
     failed_attempts = db.Column(db.Integer, nullable=False, default=0)
     locked_until    = db.Column(db.DateTime, nullable=True)
+    last_login      = db.Column(db.DateTime, nullable=True)
     sales           = db.relationship('Sale', backref='cashier', lazy=True)
     reports      = db.relationship('Report', backref='generatedByUser', lazy=True)
 

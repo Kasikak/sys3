@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, session
 from services.item_service import ItemService
 from routes.pages import login_required
 
@@ -24,6 +24,8 @@ def get_items():
 @items_bp.route('/api/add-item', methods=['POST'])
 @login_required
 def add_item():
+    if session.get('role') not in ['owner', 'manager']:
+        return jsonify({'success': False, 'error': 'Permission denied'}), 403
     data = request.get_json() or {}
     name = data.get('name', '').strip()
     if not name:
@@ -45,6 +47,8 @@ def add_item():
 @items_bp.route('/api/update-item/<item_id>', methods=['PUT'])
 @login_required
 def update_item(item_id):
+    if session.get('role') not in ['owner', 'manager']:
+        return jsonify({'success': False, 'error': 'Permission denied'}), 403
     data = request.get_json() or {}
     try:
         price             = float(data.get('price', 0))
@@ -63,6 +67,8 @@ def update_item(item_id):
 @items_bp.route('/api/remove-item/<item_id>', methods=['DELETE'])
 @login_required
 def remove_item(item_id):
+    if session.get('role') not in ['owner', 'manager']:
+        return jsonify({'success': False, 'error': 'Permission denied'}), 403
     _, error = ItemService.delete(item_id)
     if error:
         return jsonify({'success': False, 'error': error}), 404

@@ -40,7 +40,8 @@ def get_users():
         'full_name':  u.full_name,
         'username':   u.username,
         'role':       u.role.roleName.lower(),
-        'created_at': u.created_at.isoformat() if u.created_at else ''
+        'created_at': u.created_at.isoformat() if u.created_at else '',
+        'last_login': u.last_login.isoformat() if u.last_login else None
     } for u in users])
 
 

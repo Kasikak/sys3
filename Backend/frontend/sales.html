@@ -57,7 +57,8 @@
     </div>
     <div id="receipt-content"></div>
     <div class="modal-footer">
-      <button class="btn btn-primary btn-full" onclick="closeReceipt()">Done</button>
+      <button class="btn btn-outline" onclick="printReceipt()">Print</button>
+      <button class="btn btn-primary" onclick="closeReceipt()">Done</button>
     </div>
   </div>
 </div>
@@ -91,13 +92,35 @@ function renderProductGrid(products) {
   wrapper.className = 'product-grid';
 
   inStock.forEach(p => {
-    const card = document.createElement('div');
+    const card     = document.createElement('div');
     card.className = 'product-card';
-    card.innerHTML = `
-      <div class="product-card-name">${p.name}</div>
-      <div class="product-card-price">$${parseFloat(p.price).toFixed(2)}</div>
-      <div class="product-card-stock">${p.stock} in stock</div>
-    `;
+
+    // Image: use first word of item name as filename, e.g. "Carib" → images/Carib.png
+    const key     = p.name.split(' ')[0];
+    const imgSrc  = `/static/images/${key}.png`;
+
+    const img = document.createElement('img');
+    img.src   = imgSrc;
+    img.alt   = p.name;
+    img.className = 'product-card-img';
+    img.onerror   = () => { img.style.display = 'none'; };  // hide if no image found
+
+    const name  = document.createElement('div');
+    name.className   = 'product-card-name';
+    name.textContent = p.name;
+
+    const price = document.createElement('div');
+    price.className   = 'product-card-price';
+    price.textContent = '$' + parseFloat(p.price).toFixed(2);
+
+    const stock = document.createElement('div');
+    stock.className   = 'product-card-stock';
+    stock.textContent = p.stock + ' in stock';
+
+    card.appendChild(img);
+    card.appendChild(name);
+    card.appendChild(price);
+    card.appendChild(stock);
     card.addEventListener('click', () => addToCart(p.id, p.name, p.price, p.stock));
     wrapper.appendChild(card);
   });
@@ -263,6 +286,29 @@ async function processSale() {
 
 function closeReceipt() {
   document.getElementById('receipt-modal').classList.add('hidden');
+}
+
+function printReceipt() {
+  const content = document.getElementById('receipt-content').innerHTML;
+  const win = window.open('', '_blank', 'width=400,height=600');
+  win.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Receipt</title>
+      <style>
+        body { font-family: Arial, sans-serif; font-size: 13px; padding: 1.5rem; color: #222; }
+        hr { border: none; border-top: 1px solid #ddd; margin: 0.75rem 0; }
+        .receipt div { margin-bottom: 0.3rem; }
+      </style>
+    </head>
+    <body>${content}</body>
+    </html>
+  `);
+  win.document.close();
+  win.focus();
+  win.print();
+  win.close();
 }
 
 async function loadHistory() {

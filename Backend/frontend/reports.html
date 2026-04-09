@@ -82,16 +82,31 @@ async function generateReport() {
   document.getElementById('report-results').classList.add('hidden');
   document.getElementById('report-empty').classList.add('hidden');
 
-  const res  = await fetch(`/api/reports?start_date=${start}&end_date=${end}`);
-  reportData = await res.json();
+  let res, data;
+  try {
+    res  = await fetch(`/api/reports?start_date=${start}&end_date=${end}`);
+    data = await res.json();
+  } catch (e) {
+    showToast('Could not reach server', 'error');
+    document.getElementById('report-empty').classList.remove('hidden');
+    return;
+  }
 
-  document.getElementById('r-revenue').textContent     = '$' + reportData.total_revenue.toFixed(2);
-  document.getElementById('r-sales').textContent       = reportData.total_sales;
-  document.getElementById('r-items').textContent       = reportData.total_items_sold;
-  document.getElementById('r-stock-alerts').textContent = reportData.low_stock_count + reportData.out_of_stock_count;
+  if (!res.ok || data.error) {
+    showToast(data.error || 'Failed to generate report', 'error');
+    document.getElementById('report-empty').classList.remove('hidden');
+    return;
+  }
 
-  renderDailyChart(reportData.sales_by_day);
-  renderTopProducts(reportData.top_products);
+  reportData = data;
+
+  document.getElementById('r-revenue').textContent      = '$' + data.total_revenue.toFixed(2);
+  document.getElementById('r-sales').textContent        = data.total_sales;
+  document.getElementById('r-items').textContent        = data.total_items_sold;
+  document.getElementById('r-stock-alerts').textContent = data.low_stock_count + data.out_of_stock_count;
+
+  renderDailyChart(data.sales_by_day);
+  renderTopProducts(data.top_products);
 
   document.getElementById('report-results').classList.remove('hidden');
   document.getElementById('download-btn').classList.remove('hidden');
@@ -115,23 +130,30 @@ function renderDailyChart(days) {
 
 function renderTopProducts(products) {
   const container = document.getElementById('top-products-table');
+  container.innerHTML = '';
   if (products.length === 0) {
     container.innerHTML = '<p class="empty-text">No sales data for this period</p>';
     return;
   }
-  container.innerHTML = `
-    <table class="table">
-      <thead><tr><th>#</th><th>Product</th><th>Qty Sold</th><th>Revenue</th></tr></thead>
-      <tbody>
-        ${products.map((p, i) => `<tr>
-          <td>${i + 1}</td>
-          <td><strong>${p.name}</strong></td>
-          <td>${p.qty}</td>
-          <td><strong>$${p.revenue.toFixed(2)}</strong></td>
-        </tr>`).join('')}
-      </tbody>
-    </table>
-  `;
+  const table = document.createElement('table');
+  table.className = 'table';
+  table.innerHTML = '<thead><tr><th>#</th><th>Product</th><th>Qty Sold</th><th>Revenue</th></tr></thead>';
+  const tbody = document.createElement('tbody');
+  products.forEach((p, i) => {
+    const tr = document.createElement('tr');
+    const tdNum = document.createElement('td'); tdNum.textContent = i + 1;
+    const tdName = document.createElement('td');
+    const b = document.createElement('strong'); b.textContent = p.name;
+    tdName.appendChild(b);
+    const tdQty = document.createElement('td'); tdQty.textContent = p.qty;
+    const tdRev = document.createElement('td');
+    const b2 = document.createElement('strong'); b2.textContent = '$' + p.revenue.toFixed(2);
+    tdRev.appendChild(b2);
+    tr.append(tdNum, tdName, tdQty, tdRev);
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  container.appendChild(table);
 }
 
 function downloadCSV() {
