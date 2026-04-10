@@ -11,6 +11,11 @@ alerts_bp = Blueprint('alerts', __name__)
 def get_alerts():
     if session.get('role') not in ['owner', 'manager']:
         return jsonify({'error': 'Forbidden'}), 403
+
+    # Sync: create missing alerts for any items that are currently low/out
+    for item in Item.query.all():
+        AlertService.create_if_needed(item)
+
     resolved = request.args.get('resolved', 'false').lower() == 'true'
     alerts   = AlertService.get_all(resolved)
     result   = []
@@ -29,7 +34,8 @@ def get_alerts():
 @alerts_bp.route('/api/alerts/<int:alert_id>/resolve', methods=['PUT'])
 @login_required
 def resolve_alert(alert_id):
-    _, error = AlertService.resolve(alert_id)
-    if error:
-        return jsonify({'success': False, 'error': error}), 404
+    success, error = AlertService.resolve(alert_id)
+    if not success:
+        status = 404 if error == 'Alert not found' else 400
+        return jsonify({'success': False, 'error': error}), status
     return jsonify({'success': True})

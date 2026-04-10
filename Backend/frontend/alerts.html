@@ -71,8 +71,13 @@ async function loadAlerts(resolved) {
 
     const tdType = document.createElement('td');
     const badge = document.createElement('span');
-    badge.className = `badge ${a.alert_type === 'out_of_stock' ? 'badge-red' : 'badge-amber'}`;
-    badge.textContent = a.alert_type.replace('_', ' ');
+    badge.className = `badge ${
+      a.alert_type === 'out_of_stock'   ? 'badge-red' :
+      a.alert_type === 'promo_low_stock' ? 'badge-purple' :
+      'badge-amber'
+    }`;
+    const typeLabels = { low_stock: 'Low Stock', out_of_stock: 'Out of Stock', promo_low_stock: 'Promo Low Stock' };
+    badge.textContent = typeLabels[a.alert_type] || a.alert_type.replace(/_/g, ' ');
     tdType.appendChild(badge);
 
     const tdMsg = document.createElement('td');
@@ -113,7 +118,17 @@ async function resolveAlert(id) {
     showToast('Alert resolved');
     loadAlerts(currentResolved);
   } else {
-    showToast(data.error || 'Failed to resolve alert', 'error');
+    const msg = data.error || 'Failed to resolve alert';
+    // Show persistent inline warning above the table for stock-still-low errors
+    let banner = document.getElementById('resolve-warning');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id        = 'resolve-warning';
+      banner.className = 'alert alert-error';
+      banner.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem';
+      document.getElementById('alerts-container').before(banner);
+    }
+    banner.innerHTML = `<span>${msg}</span><button onclick="this.parentElement.remove()" style="background:none;border:none;cursor:pointer;font-size:1rem;color:#7f0000">&#10005;</button>`;
   }
 }
 

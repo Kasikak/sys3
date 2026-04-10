@@ -19,9 +19,10 @@
 
       <div class="pos-user-select">
         <label class="pos-label">Select User</label>
-        <select id="user-select" class="pos-select" onchange="onUserSelect()">
-          <option value="">— choose —</option>
-        </select>
+        <input type="text" id="user-input" class="pos-select" list="user-list"
+               placeholder="Type or choose a user..." autocomplete="off"
+               oninput="onUserSelect()" onchange="onUserSelect()" />
+        <datalist id="user-list"></datalist>
       </div>
 
       <div class="pos-pin-display">
@@ -62,17 +63,18 @@
 
   <script>
     let pin = '';
+    let userMap = {}; // full_name → username
 
     async function loadUsers() {
       try {
         const res   = await fetch('/api/users/public');
         const users = await res.json();
-        const sel   = document.getElementById('user-select');
+        const dl    = document.getElementById('user-list');
         users.forEach(u => {
-          const opt   = document.createElement('option');
-          opt.value   = u.username;
-          opt.textContent = u.full_name;
-          sel.appendChild(opt);
+          userMap[u.full_name] = u.username;
+          const opt = document.createElement('option');
+          opt.value = u.full_name;
+          dl.appendChild(opt);
         });
       } catch (_) {}
     }
@@ -81,6 +83,14 @@
       pin = '';
       updateDots();
       document.getElementById('error-msg').classList.add('hidden');
+    }
+
+    function resolveUsername() {
+      const val = document.getElementById('user-input').value.trim();
+      // If typed value matches a full name exactly, return mapped username
+      if (userMap[val]) return userMap[val];
+      // Otherwise treat as a direct username entry
+      return val;
     }
 
     function pressKey(k) {
@@ -105,12 +115,12 @@
     }
 
     async function doLogin() {
-      const username = document.getElementById('user-select').value;
+      const username = resolveUsername();
       const errEl    = document.getElementById('error-msg');
       errEl.classList.add('hidden');
 
       if (!username) {
-        errEl.textContent = 'Please select a user';
+        errEl.textContent = 'Please select or type a user';
         errEl.classList.remove('hidden');
         return;
       }

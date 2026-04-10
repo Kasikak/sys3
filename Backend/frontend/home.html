@@ -34,15 +34,19 @@
       <span class="home-tile-arrow">&#8594;</span>
     </a>
 
+    <a href="/promotions" class="home-tile">
+      <div class="home-tile-icon">&#37;</div>
+      <div class="home-tile-label">Promotions</div>
+      <span class="home-tile-arrow">&#8594;</span>
+    </a>
+
     <a href="/reports" class="home-tile">
       <div class="home-tile-icon">&#9741;</div>
       <div class="home-tile-label">Reports</div>
       <span class="home-tile-arrow">&#8594;</span>
     </a>
-    {% endif %}
 
-    {% if role in ['owner', 'manager'] %}
-    <a href="/users" class="home-tile">
+    <a href="/users" class="home-tile" style="grid-column:2">
       <div class="home-tile-icon">&#9786;</div>
       <div class="home-tile-label">Users</div>
       <span class="home-tile-arrow">&#8594;</span>

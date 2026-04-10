@@ -16,13 +16,14 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
 
 # Register blueprints (Boundary layer)
-from routes.auth    import auth_bp
-from routes.pages   import pages_bp
-from routes.items   import items_bp
-from routes.sales   import sales_bp
-from routes.alerts  import alerts_bp
-from routes.reports import reports_bp
-from routes.users   import users_bp
+from routes.auth       import auth_bp
+from routes.pages      import pages_bp
+from routes.items      import items_bp
+from routes.sales      import sales_bp
+from routes.alerts     import alerts_bp
+from routes.reports    import reports_bp
+from routes.users      import users_bp
+from routes.promotions import promotions_bp
 
 app.register_blueprint(auth_bp)
 app.register_blueprint(pages_bp)
@@ -31,6 +32,7 @@ app.register_blueprint(sales_bp)
 app.register_blueprint(alerts_bp)
 app.register_blueprint(reports_bp)
 app.register_blueprint(users_bp)
+app.register_blueprint(promotions_bp)
 
 if __name__ == '__main__':
     app.run(debug=True)

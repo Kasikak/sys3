@@ -80,3 +80,16 @@ class Alert(db.Model):
     message   = db.Column(db.String(255), nullable=False)
     status    = db.Column(db.String(20), nullable=False, default='active')
     createdAt = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+
+class Promotion(db.Model):
+    __tablename__ = 'Promotions'
+    promotionID     = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    ItemName        = db.Column(db.String(200), nullable=False, unique=True)
+    promotionName   = db.Column(db.String(200), nullable=False)
+    reason          = db.Column(db.String(255), nullable=False)
+    thresholdQty    = db.Column(db.Integer, nullable=False)
+    discountPercent = db.Column(db.Float, nullable=False)
+    isActive        = db.Column(db.Boolean, nullable=False, default=True)
+    createdAt       = db.Column(db.DateTime, default=utcnow, nullable=False)
+    updatedAt       = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)

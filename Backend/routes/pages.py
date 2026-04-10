@@ -75,6 +75,14 @@ def users():
     return render_template('users.html', **get_ctx())
 
 
+@pages_bp.route('/promotions')
+@login_required
+def promotions():
+    if session.get('role') not in ['owner', 'manager']:
+        return redirect('/home')
+    return render_template('promotions.html', **get_ctx())
+
+
 @pages_bp.route('/api/dashboard')
 @login_required
 def api_dashboard():

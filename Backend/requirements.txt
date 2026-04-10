@@ -2,3 +2,7 @@ flask
 flask-sqlalchemy 
 pymysql 
 flask-cors
+flask==3.0.3
+flask-cors==4.0.1
+supabase==2.4.3
+python-dotenv==1.0.1

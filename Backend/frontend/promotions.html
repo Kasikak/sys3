@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+{% block title %}Promotions - Carol's IMS{% endblock %}
+
+{% block content %}
+<a href="/home" class="back-link">&#8592; Home</a>
+<div class="page-header">
+  <h1 class="page-title">Promotional Items</h1>
+  <p class="page-sub">Set and manage item promotions</p>
+</div>
+
+<div class="tab-group">
+  <button class="tab-btn active" id="tab-all"    onclick="showTab('all')">All Items</button>
+  <button class="tab-btn"        id="tab-active" onclick="showTab('active')">Active Promotions</button>
+</div>
+
+<div class="card" style="margin-bottom:1rem">
+  <input type="text" id="promo-search" class="form-input" placeholder="Search items..." oninput="filterItems()" />
+</div>
+
+<div id="promo-container">Loading...</div>
+
+<!-- Promotion Modal -->
+<div class="modal-overlay hidden" id="promo-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title" id="modal-title">Set Promotion</h2>
+      <button class="modal-close" onclick="closeModal()">&#10005;</button>
+    </div>
+    <form id="promo-form" onsubmit="submitPromotion(event)">
+      <div style="padding:1.25rem">
+        <div style="background:#f9f9f9;border:1px solid #eee;padding:0.75rem;margin-bottom:1rem">
+          <div style="font-weight:bold;font-size:0.95rem" id="modal-item-name"></div>
+          <div style="font-size:0.8rem;color:#888;margin-top:0.2rem" id="modal-item-info"></div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Promotion Name <span style="color:#c00">*</span></label>
+          <input type="text" id="field-name" class="form-input" placeholder="e.g. Black Friday Sale" required />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Reason / Description <span style="color:#c00">*</span></label>
+          <input type="text" id="field-reason" class="form-input" placeholder="e.g. End of season clearance" required />
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Threshold Qty <span style="color:#c00">*</span></label>
+            <input type="number" id="field-threshold" class="form-input" placeholder="e.g. 3" min="1" step="1" required />
+            <div style="font-size:0.75rem;color:#888;margin-top:0.2rem">Min items to qualify for discount</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Discount % <span style="color:#c00">*</span></label>
+            <input type="number" id="field-discount" class="form-input" placeholder="e.g. 10" min="0.01" max="100" step="0.01" required />
+            <div style="font-size:0.75rem;color:#888;margin-top:0.2rem">Percentage off the item price</div>
+          </div>
+        </div>
+
+        <div id="discount-preview" class="hidden" style="background:#e8f5e9;border:1px solid #81c784;padding:0.6rem 0.75rem;font-size:0.85rem;color:#1b5e20;margin-top:0.25rem"></div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button type="button" id="btn-remove" class="btn btn-danger hidden" onclick="confirmRemove()">Remove Promotion</button>
+        <button type="submit" class="btn btn-primary" id="btn-save">Save Promotion</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Remove Confirm Modal -->
+<div class="modal-overlay hidden" id="confirm-modal">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2 class="modal-title">Remove Promotion</h2>
+      <button class="modal-close" onclick="closeConfirm()">&#10005;</button>
+    </div>
+    <div class="modal-body-text">
+      Are you sure you want to remove the promotion from <strong id="confirm-item-name"></strong>?
+      This will also dismiss any active promo alerts for this item.
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeConfirm()">Cancel</button>
+      <button class="btn btn-danger"  onclick="executeRemove()">Yes, Remove</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allItems   = [];
+let currentTab = 'all';
+let selectedItem = null;
+
+async function loadItems() {
+  const container = document.getElementById('promo-container');
+  container.innerHTML = '<div class="card"><p class="empty-text">Loading...</p></div>';
+
+  try {
+    const res = await fetch('/api/promotions');
+    if (!res.ok) {
+      container.innerHTML = `<div class="card"><p class="empty-text" style="color:#c00">Error ${res.status}: failed to load items</p></div>`;
+      return;
+    }
+    allItems = await res.json();
+  } catch (err) {
+    container.innerHTML = `<div class="card"><p class="empty-text" style="color:#c00">Could not reach server</p></div>`;
+    return;
+  }
+
+  renderItems();
+}
+
+function filterItems() {
+  renderItems();
+}
+
+function showTab(tab) {
+  currentTab = tab;
+  document.getElementById('tab-all').classList.toggle('active', tab === 'all');
+  document.getElementById('tab-active').classList.toggle('active', tab === 'active');
+  renderItems();
+}
+
+function renderItems() {
+  const q          = document.getElementById('promo-search').value.toLowerCase();
+  const container  = document.getElementById('promo-container');
+
+  let items = allItems.filter(i => i.item_name.toLowerCase().includes(q));
+  if (currentTab === 'active') {
+    items = items.filter(i => i.promotion !== null);
+  }
+
+  if (items.length === 0) {
+    container.innerHTML = `<div class="card"><p class="empty-text">${currentTab === 'active' ? 'No active promotions' : 'No items found'}</p></div>`;
+    return;
+  }
+
+  const card  = document.createElement('div');
+  card.className = 'card';
+  const table = document.createElement('table');
+  table.className = 'table';
+
+  const thead = document.createElement('thead');
+  thead.innerHTML = `<tr>
+    <th>Item</th>
+    <th>Category</th>
+    <th>Price</th>
+    <th>Stock</th>
+    <th>Promotion</th>
+    <th>Threshold</th>
+    <th>Discount</th>
+    <th></th>
+  </tr>`;
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+
+  items.forEach(item => {
+    const tr = document.createElement('tr');
+    tr.style.cursor = 'pointer';
+    tr.addEventListener('click', () => openModal(item));
+
+    const promo = item.promotion;
+
+    tr.innerHTML = `
+      <td><strong>${item.item_name}</strong></td>
+      <td><span class="text-muted">${item.category}</span></td>
+      <td>$${parseFloat(item.price).toFixed(2)}</td>
+      <td>${item.stock}</td>
+      <td>${promo
+        ? `<span class="badge badge-purple">${promo.promotion_name}</span>`
+        : `<span class="text-muted">—</span>`
+      }</td>
+      <td>${promo ? `Buy ${promo.threshold_qty}+` : '—'}</td>
+      <td>${promo ? `<strong>${promo.discount_percent}% off</strong>` : '—'}</td>
+      <td>
+        <div class="table-actions">
+          <button class="btn btn-sm ${promo ? 'btn-outline' : 'btn-primary'}" onclick="event.stopPropagation(); openModal(${JSON.stringify(item).replace(/"/g, '&quot;')})">
+            ${promo ? 'Edit' : 'Set Promo'}
+          </button>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(tbody);
+  card.appendChild(table);
+  container.innerHTML = '';
+  container.appendChild(card);
+}
+
+function openModal(item) {
+  selectedItem = item;
+  const promo  = item.promotion;
+
+  document.getElementById('modal-title').textContent     = promo ? 'Edit Promotion' : 'Set Promotion';
+  document.getElementById('modal-item-name').textContent = item.item_name;
+  document.getElementById('modal-item-info').textContent = `${item.category} · $${parseFloat(item.price).toFixed(2)} · ${item.stock} in stock`;
+
+  document.getElementById('field-name').value      = promo ? promo.promotion_name   : '';
+  document.getElementById('field-reason').value    = promo ? promo.reason           : '';
+  document.getElementById('field-threshold').value = promo ? promo.threshold_qty    : '';
+  document.getElementById('field-discount').value  = promo ? promo.discount_percent : '';
+
+  document.getElementById('btn-remove').classList.toggle('hidden', !promo);
+  document.getElementById('confirm-item-name').textContent = item.item_name;
+
+  updatePreview();
+  document.getElementById('promo-modal').classList.remove('hidden');
+}
+
+function closeModal() {
+  document.getElementById('promo-modal').classList.add('hidden');
+  document.getElementById('discount-preview').classList.add('hidden');
+  selectedItem = null;
+}
+
+function updatePreview() {
+  const price    = selectedItem ? parseFloat(selectedItem.price) : 0;
+  const qty      = parseInt(document.getElementById('field-threshold').value) || 0;
+  const discount = parseFloat(document.getElementById('field-discount').value) || 0;
+  const preview  = document.getElementById('discount-preview');
+
+  if (qty >= 1 && discount > 0 && price > 0) {
+    const discounted = price * (1 - discount / 100);
+    const saving     = (price - discounted) * qty;
+    preview.textContent = `Buy ${qty} × $${price.toFixed(2)} → $${discounted.toFixed(2)} each. Customer saves $${saving.toFixed(2)}.`;
+    preview.classList.remove('hidden');
+  } else {
+    preview.classList.add('hidden');
+  }
+}
+
+document.addEventListener('input', e => {
+  if (['field-threshold', 'field-discount'].includes(e.target.id)) updatePreview();
+});
+
+async function submitPromotion(e) {
+  e.preventDefault();
+  if (!selectedItem) return;
+
+  const btn = document.getElementById('btn-save');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  const payload = {
+    promotion_name:   document.getElementById('field-name').value.trim(),
+    reason:           document.getElementById('field-reason').value.trim(),
+    threshold_qty:    parseInt(document.getElementById('field-threshold').value),
+    discount_percent: parseFloat(document.getElementById('field-discount').value),
+  };
+
+  try {
+    const res  = await fetch(`/api/promotions/${encodeURIComponent(selectedItem.item_name)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      showToast('Promotion saved');
+      closeModal();
+      await loadItems();
+    } else {
+      showToast(data.error || 'Failed to save promotion', 'error');
+    }
+  } catch (err) {
+    showToast('Could not reach server', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save Promotion';
+  }
+}
+
+function confirmRemove() {
+  document.getElementById('promo-modal').classList.add('hidden');
+  document.getElementById('confirm-modal').classList.remove('hidden');
+}
+
+function closeConfirm() {
+  document.getElementById('confirm-modal').classList.add('hidden');
+  if (selectedItem) {
+    document.getElementById('promo-modal').classList.remove('hidden');
+  }
+}
+
+async function executeRemove() {
+  if (!selectedItem) return;
+
+  try {
+    const res  = await fetch(`/api/promotions/${encodeURIComponent(selectedItem.item_name)}`, { method: 'DELETE' });
+    const data = await res.json();
+
+    if (data.success) {
+      showToast('Promotion removed');
+      document.getElementById('confirm-modal').classList.add('hidden');
+      selectedItem = null;
+      await loadItems();
+    } else {
+      showToast(data.error || 'Failed to remove promotion', 'error');
+      closeConfirm();
+    }
+  } catch (err) {
+    showToast('Could not reach server', 'error');
+    closeConfirm();
+  }
+}
+
+loadItems();
+</script>
+{% endblock %}

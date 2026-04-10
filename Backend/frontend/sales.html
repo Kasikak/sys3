@@ -121,7 +121,41 @@ function renderProductGrid(products) {
     card.appendChild(name);
     card.appendChild(price);
     card.appendChild(stock);
-    card.addEventListener('click', () => addToCart(p.id, p.name, p.price, p.stock));
+
+    if (p.promotion) {
+      const promo     = p.promotion;
+      const isLow     = p.stock <= p.reorder_threshold;
+      const promoWrap = document.createElement('div');
+      promoWrap.style.cssText = `margin-top:0.4rem;border-top:1px solid ${isLow ? '#ffe0b2' : '#e1bee7'};padding-top:0.4rem`;
+
+      if (isLow) {
+        // Warning: promo exists but stock is too low to reliably fulfil it
+        const warn = document.createElement('div');
+        warn.style.cssText = 'display:inline-block;background:#fff3e0;border:1px solid #ffb74d;color:#e65100;font-size:0.65rem;font-weight:bold;padding:0.15rem 0.4rem;border-radius:2px;margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.03em';
+        warn.textContent = 'Promo: Low Stock';
+        const warnDetail = document.createElement('div');
+        warnDetail.style.cssText = 'font-size:0.7rem;color:#e65100;line-height:1.3';
+        warnDetail.textContent = 'Promotion unavailable. Restock required.';
+        promoWrap.appendChild(warn);
+        promoWrap.appendChild(warnDetail);
+      } else {
+        const badge = document.createElement('div');
+        badge.style.cssText = 'display:inline-block;background:#f3e5f5;border:1px solid #ba68c8;color:#4a148c;font-size:0.65rem;font-weight:bold;padding:0.15rem 0.4rem;border-radius:2px;margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.03em';
+        badge.textContent = '% ' + promo.promotion_name;
+
+        const promoDetail = document.createElement('div');
+        promoDetail.style.cssText = 'font-size:0.7rem;color:#4a148c;line-height:1.3';
+        const discountedPrice = parseFloat(p.price) * (1 - promo.discount_percent / 100);
+        promoDetail.textContent = `Buy ${promo.threshold_qty}+ for ${promo.discount_percent}% off ($${discountedPrice.toFixed(2)} each)`;
+
+        promoWrap.appendChild(badge);
+        promoWrap.appendChild(promoDetail);
+      }
+
+      card.appendChild(promoWrap);
+    }
+
+    card.addEventListener('click', () => addToCart(p.id, p.name, p.price, p.stock, p.promotion || null));
     wrapper.appendChild(card);
   });
 
@@ -129,12 +163,12 @@ function renderProductGrid(products) {
   grid.appendChild(wrapper);
 }
 
-function addToCart(id, name, price, stock) {
+function addToCart(id, name, price, stock, promotion) {
   if (cart[id]) {
     if (cart[id].qty >= stock) { showToast('Not enough stock', 'error'); return; }
     cart[id].qty++;
   } else {
-    cart[id] = { id, name, price: parseFloat(price), qty: 1, maxStock: stock };
+    cart[id] = { id, name, price: parseFloat(price), qty: 1, maxStock: stock, promotion: promotion || null };
   }
   renderCart();
 }
@@ -165,15 +199,38 @@ function renderCart() {
   cartEl.innerHTML = '';
 
   items.forEach(item => {
-    total += item.price * item.qty;
+    const promo        = item.promotion;
+    const promoActive  = promo && item.qty >= promo.threshold_qty;
+    const unitPrice    = promoActive
+      ? item.price * (1 - promo.discount_percent / 100)
+      : item.price;
+    const lineTotal    = unitPrice * item.qty;
+    total += lineTotal;
 
     const row = document.createElement('div');
     row.className = 'cart-item';
+
+    // Price display: show unit price and strikethrough original if discounted
+    let priceHTML;
+    if (promoActive) {
+      priceHTML = `
+        <span style="text-decoration:line-through;color:#aaa;font-size:0.75rem;margin-right:0.25rem">$${item.price.toFixed(2)}</span>
+        <span class="cart-item-price" style="color:#4a148c">$${lineTotal.toFixed(2)}</span>`;
+    } else {
+      priceHTML = `<span class="cart-item-price">$${lineTotal.toFixed(2)}</span>`;
+    }
+
+    // Unit price line
+    const unitLabel = promoActive
+      ? `<span style="font-size:0.7rem;color:#4a148c">$${unitPrice.toFixed(2)}/unit · ${promo.discount_percent}% off (${promo.promotion_name})</span>`
+      : `<span style="font-size:0.7rem;color:#aaa">$${item.price.toFixed(2)}/unit${promo ? ` · buy ${promo.threshold_qty}+ for ${promo.discount_percent}% off` : ''}</span>`;
+
     row.innerHTML = `
       <div class="cart-item-info">
         <span class="cart-item-name">${item.name}</span>
-        <span class="cart-item-price">$${(item.price * item.qty).toFixed(2)}</span>
+        <div style="display:flex;align-items:center;gap:0.25rem">${priceHTML}</div>
       </div>
+      <div style="margin-bottom:0.2rem">${unitLabel}</div>
       <div class="cart-item-controls">
         <button class="qty-btn" data-action="dec">-</button>
         <span class="qty-val">${item.qty}</span>
@@ -192,11 +249,13 @@ function renderCart() {
 }
 
 async function processSale() {
-  const items = Object.values(cart).map(i => ({
-    product_id: i.id,
-    quantity:   i.qty,
-    price:      i.price
-  }));
+  const items = Object.values(cart).map(i => {
+    const promoActive = i.promotion && i.qty >= i.promotion.threshold_qty;
+    const effectivePrice = promoActive
+      ? i.price * (1 - i.promotion.discount_percent / 100)
+      : i.price;
+    return { product_id: i.id, quantity: i.qty, price: effectivePrice };
+  });
   if (items.length === 0) return;
 
   const res  = await fetch('/api/sales', {
@@ -208,7 +267,11 @@ async function processSale() {
 
   if (data.success) {
     const saleItems   = Object.values(cart);
-    const total       = saleItems.reduce((s, i) => s + i.price * i.qty, 0);
+    const total       = saleItems.reduce((s, i) => {
+      const promoActive = i.promotion && i.qty >= i.promotion.threshold_qty;
+      const unitPrice   = promoActive ? i.price * (1 - i.promotion.discount_percent / 100) : i.price;
+      return s + unitPrice * i.qty;
+    }, 0);
     const paymentMethod = document.getElementById('payment-method').value;
     const now         = new Date().toLocaleString();
 
@@ -235,12 +298,14 @@ async function processSale() {
 
     // Line items
     saleItems.forEach(i => {
+      const promoActive  = i.promotion && i.qty >= i.promotion.threshold_qty;
+      const unitPrice    = promoActive ? i.price * (1 - i.promotion.discount_percent / 100) : i.price;
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;justify-content:space-between;margin-bottom:0.4rem;font-size:0.875rem';
       const left  = document.createElement('span');
-      left.textContent = `${i.name} x ${i.qty}`;
+      left.textContent = `${i.name} x ${i.qty}${promoActive ? ` (${i.promotion.discount_percent}% off)` : ''}`;
       const right = document.createElement('span');
-      right.textContent = `$${(i.price * i.qty).toFixed(2)}`;
+      right.textContent = `$${(unitPrice * i.qty).toFixed(2)}`;
       row.appendChild(left);
       row.appendChild(right);
       wrap.appendChild(row);

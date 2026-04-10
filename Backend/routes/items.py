@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify, session
 from services.item_service import ItemService
+from models import Promotion
 from routes.pages import login_required
 
 items_bp = Blueprint('items', __name__)
@@ -11,14 +12,28 @@ def get_items():
     search   = request.args.get('search', '')
     category = request.args.get('category', '')
     items    = ItemService.get_all(search, category)
-    return jsonify([{
-        'id':                i.ItemName,
-        'name':              i.ItemName,
-        'price':             i.Price,
-        'stock':             i.Stock,
-        'reorder_threshold': i.reorderThreshold,
-        'categories':        {'name': i.Category} if i.Category else None
-    } for i in items])
+
+    # Build a lookup of active promotions keyed by ItemName
+    promos = {p.ItemName: p for p in Promotion.query.filter_by(isActive=True).all()}
+
+    result = []
+    for i in items:
+        promo = promos.get(i.ItemName)
+        result.append({
+            'id':                i.ItemName,
+            'name':              i.ItemName,
+            'price':             i.Price,
+            'stock':             i.Stock,
+            'reorder_threshold': i.reorderThreshold,
+            'categories':        {'name': i.Category} if i.Category else None,
+            'promotion': {
+                'promotion_name':   promo.promotionName,
+                'reason':           promo.reason,
+                'threshold_qty':    promo.thresholdQty,
+                'discount_percent': promo.discountPercent,
+            } if promo else None
+        })
+    return jsonify(result)
 
 
 @items_bp.route('/api/add-item', methods=['POST'])
